@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Panel admin</title>
+<style>
+:root{--bg:#f3f4f6;--card:#fff;--ink:#16181d;--mute:#626873;--line:#e2e5ea;--acc:#e85d04;--ok:#1a7f45;--ok-bg:#ddf3e5;--busy:#9a6200;--busy-bg:#fdefd0;--off:#6b7078;--off-bg:#eceef1;--danger:#c53030}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1115;--card:#1a1d23;--ink:#eef0f3;--mute:#a0a6b0;--line:#2c3038;--ok:#5fd18f;--ok-bg:#163a26;--busy:#f1b44c;--busy-bg:#3d2f12;--off:#a3a8b0;--off-bg:#2a2c30;--danger:#f87171}}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink);line-height:1.4}
+.top{background:#111827;color:#fff;padding:14px 16px}.top .in{max-width:760px;margin:0 auto;display:flex;justify-content:space-between;align-items:center}
+.top h1{margin:0;font-size:18px}
+.wrap{max-width:760px;margin:0 auto;padding:16px 16px 40px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:14px}
+h2{font-size:16px;margin:0 0 10px}
+label{display:block;font-size:13px;color:var(--mute);margin:10px 0 4px}
+input{width:100%;padding:11px;border:1px solid var(--line);border-radius:12px;font:inherit;background:var(--bg);color:var(--ink)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:11px 15px;border-radius:12px;border:0;font:inherit;font-weight:650;cursor:pointer;background:var(--acc);color:#fff;text-decoration:none}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}.btn.wa{background:#25d366;color:#06301a}
+.btn.sm{padding:7px 11px;font-size:13px}.btn.danger{background:transparent;color:var(--danger);border:1px solid var(--line)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:0 12px}
+.row{display:flex;gap:10px;align-items:center}.grow{flex:1;min-width:0}
+.mute{color:var(--mute);font-size:13px}
+.link{display:flex;gap:8px;align-items:center;padding:10px 0;border-top:1px solid var(--line);flex-wrap:wrap}.link:first-of-type{border-top:0}
+.link code{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;background:var(--bg);padding:8px;border-radius:8px}
+.drv{display:flex;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--line);flex-wrap:wrap}
+.av{width:44px;height:58px;border-radius:8px;object-fit:cover;background:var(--off-bg);display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--mute);flex:none}
+.pill{display:inline-block;font-size:12px;font-weight:650;padding:2px 9px;border-radius:99px}
+.disponible,.completada{color:var(--ok);background:var(--ok-bg)}.en_carrera,.aceptada,.pendiente{color:var(--busy);background:var(--busy-bg)}.no_disponible,.cancelada,.inactivo{color:var(--off);background:var(--off-bg)}
+table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:8px 6px;border-top:1px solid var(--line);text-align:left;vertical-align:top}th{color:var(--mute);font-weight:600}
+.scroll{overflow-x:auto}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:11px 16px;border-radius:12px;opacity:0;transition:.25s;pointer-events:none;max-width:90%;z-index:9}
+.toast.show{opacity:1}.hide{display:none!important}
+.chk{display:flex;gap:8px;align-items:center;margin-top:12px;color:var(--ink)}.chk input{width:auto}
+</style>
+</head>
+<body>
+<div class="top"><div class="in"><h1 id="titulo">⚙️ Panel de administración</h1><button class="btn sm ghost hide" style="color:#fff" id="salir">Salir</button></div></div>
+<div class="wrap">
+  <form class="card" id="login">
+    <h2>Entrar como administrador</h2>
+    <label>Clave</label><input type="password" name="clave" required>
+    <button class="btn" style="margin-top:14px">Entrar</button>
+  </form>
+
+  <div id="app" class="hide">
+    <div class="card">
+      <h2>🔗 Links para compartir</h2>
+      <div id="links"></div>
+    </div>
+
+    <form class="card" id="fTasa">
+      <h2>💵 Tasa BCV</h2>
+      <div id="tasaActual" class="mute">Cargando…</div>
+      <label>Tasa manual (solo si la automática falla; déjalo vacío para usar la del BCV)</label>
+      <div class="row"><input name="tasa" inputmode="decimal" placeholder="Ej: 919,82"><button class="btn sm">Guardar</button></div>
+    </form>
+
+    <form class="card" id="fChofer">
+      <h2 id="fTitulo">➕ Agregar chofer</h2>
+      <input type="hidden" name="id">
+      <div class="grid">
+        <div><label>Nombre</label><input name="nombre" required maxlength="40"></div>
+        <div><label>Teléfono (WhatsApp)</label><input name="telefono" required inputmode="tel" placeholder="0414…"></div>
+        <div><label>PIN (4–6 números)</label><input name="pin" required inputmode="numeric" pattern="\d{4,6}"></div>
+        <div><label>Moto (marca, color, placa)</label><input name="moto" maxlength="60"></div>
+      </div>
+      <label class="chk"><input type="checkbox" name="activo" checked> Activo (puede entrar y aparece en la lista)</label>
+      <div class="row" style="margin-top:14px">
+        <button class="btn">Guardar</button>
+        <button type="button" class="btn ghost hide" id="cancelarEd">Cancelar edición</button>
+      </div>
+    </form>
+
+    <div class="card">
+      <h2>🏍️ Choferes <span class="mute" id="nCh"></span></h2>
+      <div id="choferes"></div>
+    </div>
+
+    <div class="card">
+      <h2>📋 Últimas solicitudes</h2>
+      <div class="scroll"><table><thead><tr><th>Hora</th><th>Cliente</th><th>Ruta</th><th>Estado</th><th>Chofer</th><th>Precio</th></tr></thead><tbody id="sols"></tbody></table></div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="config.js"></script>
+<script>if (window.DEMO) document.write('<script src="mock.js"><\/script>');</script>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function call(a, d) { return callAPI(a, d); }
+let CFG = { codigoPais: '58', nombre: 'MotoCali', url: '' };
+function wa(t) { t = String(t || '').replace(/\D/g, ''); if (!t) return ''; if (t[0] === '0') t = CFG.codigoPais + t.slice(1); else if (t.length <= 10) t = CFG.codigoPais + t; return t; }
+function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 3200); }
+function link(p) { return new URL({ '': './', chofer: 'chofer.html', admin: 'admin.html' }[p], location.href).href; }
+const EST = { disponible: 'Disponible', en_carrera: 'En carrera', no_disponible: 'No disponible' };
+const num = (n, d = 2) => Number(n || 0).toLocaleString('es-VE', { minimumFractionDigits: d, maximumFractionDigits: d });
+function pintarTasa() {
+  const t = CFG.tasa || {};
+  $('#tasaActual').innerHTML = t.tasa
+    ? `<b style="font-size:18px;color:var(--ink)">${num(t.tasa)} Bs/$</b> · ${t.fuente === 'manual' ? 'tasa manual (puesta por ti)' : 'BCV automática' + (t.fecha ? ' del ' + t.fecha : '')}`
+    : 'No disponible. Pon una tasa manual abajo.';
+}
+$('#fTasa').addEventListener('submit', async e => {
+  e.preventDefault();
+  try { CFG.tasa = await call('adminTasa', { clave, tasa: e.target.tasa.value }); e.target.reset(); pintarTasa(); toast('Tasa actualizada'); }
+  catch (err) { toast(err.message || err); }
+});
+let clave = null; try { clave = sessionStorage.getItem('mb_admin'); } catch (e) {}
+let datos = { choferes: [], solicitudes: [] };
+
+$('#login').addEventListener('submit', async e => {
+  e.preventDefault(); clave = e.target.clave.value;
+  if (await cargar()) { try { sessionStorage.setItem('mb_admin', clave); } catch (e) {} }
+});
+$('#salir').addEventListener('click', () => { try { sessionStorage.removeItem('mb_admin'); } catch (e) {} location.reload(); });
+
+async function cargar() {
+  try { datos = await call('adminDatos', { clave }); }
+  catch (err) { toast(err.message || err); $('#login').classList.remove('hide'); $('#app').classList.add('hide'); return false; }
+  $('#login').classList.add('hide'); $('#app').classList.remove('hide'); $('#salir').classList.remove('hide');
+  pintar(); return true;
+}
+
+function pintar() {
+  const bienvenida = `🏍️ *${CFG.nombre}* — ¡Pide tu moto aquí! Mira qué choferes están disponibles y solicita tu viaje, encomienda o compra:\n${link('')}`;
+  $('#links').innerHTML = `
+    <div class="link"><b style="width:100%">Clientes (para los grupos de WhatsApp)</b><code>${esc(link(''))}</code>
+      <button class="btn sm ghost" data-copy="${esc(link(''))}">Copiar</button>
+      <a class="btn sm wa" target="_blank" href="https://wa.me/?text=${encodeURIComponent(bienvenida)}">Compartir</a></div>
+    <div class="link"><b style="width:100%">App de choferes</b><code>${esc(link('chofer'))}</code>
+      <button class="btn sm ghost" data-copy="${esc(link('chofer'))}">Copiar</button></div>`;
+
+  $('#nCh').textContent = '(' + datos.choferes.length + ')';
+  $('#choferes').innerHTML = datos.choferes.length ? datos.choferes.map(c => {
+    const acceso = `Hola ${c.nombre}! Ya estás registrado como chofer en ${CFG.nombre}.\n1) Instala la app "${CFG.nombre} Chofer" (el APK que te paso).\n2) Entra con Teléfono: ${c.telefono} y PIN: ${c.pin}\n3) Pon tu foto tipo carnet.\n(Si no puedes instalar la app, entra desde aquí: ${link('chofer')})`;
+    return `<div class="drv">
+      ${c.foto ? `<img class="av" src="${esc(c.foto)}" alt="">` : `<div class="av">${esc(c.nombre[0] || '?')}</div>`}
+      <div class="grow"><b>${esc(c.nombre)}</b> ${c.activo ? `<span class="pill ${c.estado}">${EST[c.estado]}</span>` : '<span class="pill inactivo">Inactivo</span>'}
+        <div class="mute">📱 ${esc(c.telefono)} · PIN ${esc(c.pin)}${c.moto ? ' · ' + esc(c.moto) : ''}</div>
+        ${c.zona ? `<div class="mute">📍 ${esc(c.zona)}</div>` : ''}</div>
+      <div class="row">
+        <a class="btn sm wa" target="_blank" href="https://wa.me/${wa(c.telefono)}?text=${encodeURIComponent(acceso)}">Enviar acceso</a>
+        <button class="btn sm ghost" data-edit="${esc(c.id)}">Editar</button>
+        <button class="btn sm danger" data-del="${esc(c.id)}">Eliminar</button>
+      </div></div>`;
+  }).join('') : '<div class="mute">Aún no hay choferes. Agrega el primero arriba.</div>';
+
+  $('#sols').innerHTML = datos.solicitudes.length ? datos.solicitudes.map(s => `<tr>
+    <td>${new Date(s.fecha).toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
+    <td>${esc(s.cliente)}<div class="mute">${esc(s.telefono)}</div></td>
+    <td>${esc(s.desde)} → ${esc(s.hasta)}<div class="mute">${esc(s.tipo)}</div></td>
+    <td><span class="pill ${s.estado}">${esc(s.estado)}</span></td>
+    <td>${esc(s.choferNombre || '—')}</td>
+    <td>${s.precioUsd ? '$' + num(s.precioUsd) + (s.precioBs ? `<div class="mute">Bs ${num(s.precioBs)}</div>` : '') : '—'}</td></tr>`).join('') : '<tr><td colspan="6" class="mute">Sin solicitudes todavía.</td></tr>';
+  pintarTasa();
+}
+
+document.addEventListener('click', async e => {
+  const cp = e.target.closest('[data-copy]');
+  if (cp) { try { await navigator.clipboard.writeText(cp.dataset.copy); toast('Link copiado'); } catch (err) { prompt('Copia el link:', cp.dataset.copy); } }
+  const ed = e.target.closest('[data-edit]');
+  if (ed) {
+    const c = datos.choferes.find(x => x.id === ed.dataset.edit); const f = $('#fChofer');
+    f.id.value = c.id; f.nombre.value = c.nombre; f.telefono.value = c.telefono; f.pin.value = c.pin; f.moto.value = c.moto || ''; f.activo.checked = c.activo;
+    $('#fTitulo').textContent = '✏️ Editar chofer'; $('#cancelarEd').classList.remove('hide'); f.scrollIntoView({ behavior: 'smooth' });
+  }
+  const del = e.target.closest('[data-del]');
+  if (del) {
+    const c = datos.choferes.find(x => x.id === del.dataset.del);
+    if (!confirm('¿Eliminar a ' + c.nombre + '? Esto no se puede deshacer (mejor desmárcalo como inactivo si solo es temporal).')) return;
+    try { await call('adminEliminarChofer', { clave, id: c.id }); toast('Chofer eliminado'); cargar(); } catch (err) { toast(err.message || err); }
+  }
+});
+function limpiarForm() {
+  const f = $('#fChofer'); f.reset(); f.id.value = ''; f.pin.value = String(Math.floor(1000 + Math.random() * 9000));
+  $('#fTitulo').textContent = '➕ Agregar chofer'; $('#cancelarEd').classList.add('hide');
+}
+$('#cancelarEd').addEventListener('click', limpiarForm);
+$('#fChofer').addEventListener('submit', async e => {
+  e.preventDefault(); const f = e.target;
+  const chofer = { id: f.id.value, nombre: f.nombre.value, telefono: f.telefono.value, pin: f.pin.value, moto: f.moto.value, activo: f.activo.checked };
+  try { await call('adminGuardarChofer', { clave, chofer }); toast('Chofer guardado'); limpiarForm(); cargar(); } catch (err) { toast(err.message || err); }
+});
+
+(async function init() {
+  try { CFG = await call('config'); $('#titulo').textContent = '⚙️ ' + CFG.nombre + ' · Admin'; } catch (e) {}
+  limpiarForm();
+  if (clave) cargar();
+  setInterval(() => { if (clave && !$('#app').classList.contains('hide')) call('adminDatos', { clave }).then(d => { datos = d; pintar(); }).catch(() => {}); }, 30000);
+})();
+</script>
+</body>
+</html>

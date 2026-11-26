@@ -78,6 +78,26 @@ input{width:100%;padding:12px;border:1px solid var(--line);border-radius:12px;fo
       </div>
     </div>
 
+    <form class="card" id="fPM">
+      <h2>💳 Mis datos de Pago Móvil</h2>
+      <div class="mute">Solo los ve el cliente cuyo viaje aceptaste y que eligió pagar por Pago Móvil.</div>
+      <label>Banco</label>
+      <input name="pmBanco" list="bancos" maxlength="40" placeholder="Ej: Banco de Venezuela">
+      <datalist id="bancos">
+        <option>Banco de Venezuela</option><option>Banesco</option><option>Mercantil</option><option>Provincial (BBVA)</option>
+        <option>Bancamiga</option><option>BNC Nacional de Crédito</option><option>Banco del Tesoro</option><option>Bicentenario</option>
+        <option>Venezolano de Crédito</option><option>Banco Exterior</option><option>Bancaribe</option><option>Banco Plaza</option>
+        <option>Banco Caroní</option><option>Sofitasa</option><option>BFC Fondo Común</option><option>100% Banco</option>
+        <option>Banplus</option><option>Mi Banco</option><option>Banco Activo</option><option>Banfanb</option><option>Bancrecer</option>
+      </datalist>
+      <div class="row" style="gap:10px">
+        <div class="grow"><label>Cédula</label><input name="pmCedula" maxlength="15" placeholder="V-12345678"></div>
+        <div class="grow"><label>Teléfono</label><input name="pmTelefono" inputmode="tel" maxlength="15" placeholder="0414…"></div>
+      </div>
+      <button class="btn block" style="margin-top:12px">Guardar datos de Pago Móvil</button>
+      <div class="mute hide" id="pmFalta" style="color:var(--acc);margin-top:8px">⚠️ Sin estos datos no podrás aceptar clientes que pagan por Pago Móvil.</div>
+    </form>
+
     <div class="card">
       <h2>Mi estado</h2>
       <div class="estados">
@@ -108,6 +128,7 @@ input{width:100%;padding:12px;border:1px solid var(--line);border-radius:12px;fo
   <form class="box" id="formPrecio">
     <h2>💵 Precio de la carrera</h2>
     <div class="mute" id="mpRuta"></div>
+    <div id="mpOferta" style="margin-top:6px;font-weight:700"></div>
     <label>Precio en dólares ($)</label>
     <input id="mpUsd" inputmode="decimal" placeholder="0,00" autocomplete="off" required>
     <div class="conv" id="mpBs">—</div>
@@ -116,6 +137,17 @@ input{width:100%;padding:12px;border:1px solid var(--line);border-radius:12px;fo
       <button class="btn" style="flex:2" id="mpOk">Aceptar carrera</button>
     </div>
   </form>
+</div>
+<!-- Ver comprobante de pago -->
+<div class="modal hide" id="modalComp" style="align-items:center">
+  <div class="box" style="max-height:90vh;overflow:auto;text-align:center">
+    <h2>🧾 Comprobante de pago</h2>
+    <img id="compImg" alt="" style="max-width:100%;border-radius:12px;margin:8px 0">
+    <div class="row" style="gap:8px">
+      <button type="button" class="btn ghost" id="compCerrar" style="flex:1">Cerrar</button>
+      <button type="button" class="btn" id="compOk" style="flex:2">✅ Pago recibido</button>
+    </div>
+  </div>
 </div>
 <div class="toast" id="toast"></div>
 
@@ -172,7 +204,14 @@ function pintarPerfil() {
   const span = box.querySelector('span'), img = box.querySelector('img');
   if (perfil.foto) { if (img) img.src = perfil.foto; else box.insertAdjacentHTML('afterbegin', `<img src="${esc(perfil.foto)}" alt="">`); span.classList.add('hide'); }
   document.querySelectorAll('.est').forEach(b => b.classList.toggle('on', b.dataset.e === perfil.estado));
+  const f = $('#fPM');
+  ['pmBanco', 'pmCedula', 'pmTelefono'].forEach(k => { if (document.activeElement !== f[k]) f[k].value = perfil[k] || ''; });
+  $('#pmFalta').classList.toggle('hide', !!(perfil.pmBanco && perfil.pmCedula && perfil.pmTelefono));
 }
+$('#fPM').addEventListener('submit', e => {
+  e.preventDefault(); const f = e.target;
+  actualizar({ pmBanco: f.pmBanco.value, pmCedula: f.pmCedula.value, pmTelefono: f.pmTelefono.value }, 'Datos de Pago Móvil guardados');
+});
 
 async function actualizar(d, msg) {
   try { perfil = await call('choferActualizar', conCred(d)); pintarPerfil(); if (msg) toast(msg); }
@@ -226,17 +265,23 @@ function pintarPend(list) {
       ${s.paraTi ? '<span class="tag">Te eligieron a ti</span>' : ''}
       <div class="ruta"><span class="mute">Desde</span><b>${esc(s.desde)}</b><span class="mute">Hasta</span><b>${esc(s.hasta)}</b></div>
       ${s.referencia ? `<div class="mute">📝 ${esc(s.referencia)}</div>` : ''}
-      <div class="mute">👤 ${esc(s.cliente)}</div>
-      <div class="acts"><button class="btn" data-acc="aceptar" data-id="${esc(s.id)}" data-ruta="${esc(s.desde + ' → ' + s.hasta)}">Aceptar y poner precio</button></div>
+      <div class="mute">👤 ${esc(s.cliente)} · ${s.metodoPago === 'pagomovil' ? '📱 Pago Móvil' : '💵 Efectivo'}</div>
+      ${s.ofertaUsd ? `<div class="precio">💰 Ofrece ${usd(s.ofertaUsd)}${tasaHoy() ? ` · ${bs(s.ofertaUsd * tasaHoy())}` : ''}</div>` : '<div class="mute">El cliente no indicó presupuesto</div>'}
+      <div class="acts"><button class="btn" data-acc="aceptar" data-id="${esc(s.id)}" data-ruta="${esc(s.desde + ' → ' + s.hasta)}" data-oferta="${s.ofertaUsd || ''}" data-metodo="${esc(s.metodoPago || 'efectivo')}">Aceptar y poner precio</button></div>
     </div>`).join('') : '<div class="empty">No hay solicitudes por ahora.</div>';
 }
 function msgCliente(s) {
   const precio = s.precioUsd ? `\n💵 Precio: ${usd(s.precioUsd)}` + (s.precioBs ? ` (${bs(s.precioBs)} a tasa BCV ${num(s.tasa)})` : '') : '';
+  const pm = s.metodoPago === 'pagomovil' && perfil.pmBanco
+    ? `\n\n📱 *Pago Móvil*\nBanco: ${perfil.pmBanco}\nTeléfono: ${perfil.pmTelefono}\nCédula: ${perfil.pmCedula}` + (s.precioBs ? `\nMonto: ${bs(s.precioBs)}` : '') +
+      `\nCuando pagues, adjunta la captura en la página de ${CFG.nombre} 🙏`
+    : (s.metodoPago === 'efectivo' ? '\n💵 Pago en efectivo' : '');
   return `Hola ${s.cliente} 👋\n` +
     `Te escribe ${perfil.nombre}, tu conductor de ${CFG.nombre} 🏍️.\n` +
-    `Tu ${SERVICIO[s.tipo] || 'servicio'} desde ${s.desde} hasta ${s.hasta} está confirmado.${precio}\n` +
+    `Tu ${SERVICIO[s.tipo] || 'servicio'} desde ${s.desde} hasta ${s.hasta} está confirmado.${precio}${pm}\n` +
     `Voy en camino. ¡Gracias por preferirnos!`;
 }
+const PAGO = { pendiente: '', enviado: '<span class="tag" style="background:var(--busy)">🧾 Comprobante recibido</span>', confirmado: '<span class="tag" style="background:var(--ok)">✅ Pago confirmado</span>' };
 function pintarMias(list) {
   $('#mias').innerHTML = list.length ? list.map(s => {
     const msg = msgCliente(s);
@@ -245,17 +290,40 @@ function pintarMias(list) {
       <div class="ruta"><span class="mute">Desde</span><b>${esc(s.desde)}</b><span class="mute">Hasta</span><b>${esc(s.hasta)}</b></div>
       ${s.referencia ? `<div class="mute">📝 ${esc(s.referencia)}</div>` : ''}
       ${s.precioUsd ? `<div class="precio">💵 ${usd(s.precioUsd)}${s.precioBs ? ` · ${bs(s.precioBs)}` : ''}</div>` : ''}
+      <div class="mute">${s.metodoPago === 'pagomovil' ? '📱 Paga por Pago Móvil' : '💵 Paga en efectivo'} ${PAGO[s.pagoEstado] || ''}</div>
+      ${s.tieneComprobante ? `<div class="acts"><button class="btn ghost sm" data-comp="${esc(s.id)}">🧾 Ver comprobante</button>${s.pagoEstado !== 'confirmado' ? `<button class="btn sm" data-okpago="${esc(s.id)}">✅ Pago recibido</button>` : ''}</div>` : ''}
       <div class="acts">
         <a class="btn wa sm" target="_blank" href="${waLink(s.telefono, msg)}">WhatsApp</a>
         <a class="btn ghost sm" href="tel:${esc(s.telefono)}">📞 Llamar</a>
-        <button class="btn sm" data-acc="finalizar" data-id="${esc(s.id)}">✓ Terminé</button>
-        <button class="btn ghost sm" data-acc="soltar" data-id="${esc(s.id)}">Soltar</button>
+        ${s.estado === 'aceptada' ? `<button class="btn sm" data-acc="finalizar" data-id="${esc(s.id)}">✓ Terminé</button>
+        <button class="btn ghost sm" data-acc="soltar" data-id="${esc(s.id)}">Soltar</button>` : '<span class="tag" style="background:var(--off)">Terminada · esperando pago</span>'}
       </div></div>`;
   }).join('') : '<div class="empty">Sin carreras activas.</div>';
 }
+/* ----- Comprobantes ----- */
+let compId = null;
+async function verComprobante(id) {
+  compId = id; $('#compImg').src = ''; $('#modalComp').classList.remove('hide');
+  try { const r = await call('verComprobante', conCred({ id })); $('#compImg').src = r.imagen; }
+  catch (err) { toast(err.message || err); $('#modalComp').classList.add('hide'); }
+}
+async function confirmarPago(id) {
+  try { await call('confirmarPago', conCred({ id })); toast('Pago confirmado ✅'); } catch (err) { toast(err.message || err); }
+  $('#modalComp').classList.add('hide'); refrescar();
+}
+$('#compCerrar').addEventListener('click', () => $('#modalComp').classList.add('hide'));
+$('#compOk').addEventListener('click', () => confirmarPago(compId));
+
 document.addEventListener('click', async e => {
+  const vc = e.target.closest('[data-comp]'); if (vc) { verComprobante(vc.dataset.comp); return; }
+  const op = e.target.closest('[data-okpago]'); if (op) { if (confirm('¿Confirmas que te llegó el pago?')) confirmarPago(op.dataset.okpago); return; }
   const b = e.target.closest('[data-acc]'); if (!b) return;
-  if (b.dataset.acc === 'aceptar') { abrirPrecio(b.dataset.id, b.dataset.ruta || ''); return; }
+  if (b.dataset.acc === 'aceptar') {
+    if (b.dataset.metodo === 'pagomovil' && !(perfil.pmBanco && perfil.pmCedula && perfil.pmTelefono)) {
+      toast('Este cliente paga por Pago Móvil: primero guarda tus datos de Pago Móvil'); $('#fPM').scrollIntoView({ behavior: 'smooth' }); return;
+    }
+    abrirPrecio(b.dataset.id, b.dataset.ruta || '', b.dataset.oferta || ''); return;
+  }
   if (b.dataset.acc === 'soltar' && !confirm('¿Devolver esta solicitud para que la tome otro chofer?')) return;
   b.disabled = true;
   try {
@@ -273,8 +341,11 @@ function pintarTasa() {
   $('#tasaInfo').textContent = t ? `Tasa BCV hoy: ${bs(t)} por $` : 'Tasa BCV no disponible';
   $('#tasaInfo').classList.remove('hide');
 }
-function abrirPrecio(id, ruta) {
-  aceptandoId = id; $('#mpRuta').textContent = ruta; $('#mpUsd').value = ''; convertir();
+function abrirPrecio(id, ruta, oferta) {
+  aceptandoId = id; $('#mpRuta').textContent = ruta;
+  const o = Number(oferta) || 0;
+  $('#mpOferta').textContent = o ? `💰 El cliente ofrece ${usd(o)}. Puedes aceptarla o cambiar el precio.` : 'El cliente no indicó presupuesto.';
+  $('#mpUsd').value = o ? String(o).replace('.', ',') : ''; convertir();
   $('#modalPrecio').classList.remove('hide'); setTimeout(() => $('#mpUsd').focus(), 50);
 }
 function convertir() {

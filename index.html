@@ -48,6 +48,15 @@ textarea{resize:vertical;min-height:60px}
 .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:11px 16px;border-radius:12px;opacity:0;transition:.25s;pointer-events:none;max-width:90%;z-index:9}
 .toast.show{opacity:1}.hide{display:none!important}
 .empty{text-align:center;padding:14px;color:var(--mute)}
+.pago{margin-top:14px;text-align:left;border:2px dashed var(--line);border-radius:14px;padding:12px}
+.pago h3{margin:0 0 8px;font-size:15px}
+.pago .dato{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--line);font-size:15px}
+.pago .dato:first-of-type{border-top:0}
+.pago .dato b{font-size:16px}
+.pago .copiar{font-size:12px;padding:5px 9px}
+.estadoPago{display:inline-block;margin-top:8px;padding:6px 12px;border-radius:99px;font-weight:700;font-size:13px}
+.estadoPago.enviado{background:var(--busy-bg);color:var(--busy)}
+.estadoPago.confirmado{background:var(--ok-bg);color:var(--ok)}
 </style>
 </head>
 <body>
@@ -85,7 +94,15 @@ textarea{resize:vertical;min-height:60px}
     <label>¿Hacia dónde?</label>
     <input name="hasta" required maxlength="140" placeholder="Ej: Terminal / Mercado / Sector X">
     <label>Referencia o nota (opcional)</label>
-    <textarea name="referencia" maxlength="200" placeholder="Ej: voy con un bolso, pago en efectivo"></textarea>
+    <textarea name="referencia" maxlength="200" placeholder="Ej: voy con un bolso, casa de rejas negras"></textarea>
+    <label>💰 ¿Cuánto ofreces? (en $, opcional)</label>
+    <input name="oferta" inputmode="decimal" maxlength="8" placeholder="Ej: 2" id="oferta" autocomplete="off">
+    <div class="mute" id="ofertaBs" style="margin-top:4px">El chofer puede aceptar tu oferta o proponerte otro precio.</div>
+    <label>¿Cómo vas a pagar?</label>
+    <div class="seg">
+      <label><input type="radio" name="metodoPago" value="efectivo" checked><span>💵 Efectivo</span></label>
+      <label><input type="radio" name="metodoPago" value="pagomovil"><span>📱 Pago Móvil</span></label>
+    </div>
     <div class="two">
       <div><label>Tu nombre</label><input name="cliente" required maxlength="60" autocomplete="name"></div>
       <div><label>Tu WhatsApp</label><input name="telefono" required inputmode="tel" maxlength="20" placeholder="0414…" autocomplete="tel"></div>
@@ -162,7 +179,7 @@ $('#form').addEventListener('submit', async e => {
     store.set('mb_cliente', { cliente: f.cliente, telefono: f.telefono });
     actual = Object.assign({ id: r.id }, f);
     store.set('mb_solicitud', actual);
-    e.target.reset(); rellenarCliente();
+    e.target.reset(); rellenarCliente(); $('#oferta').dispatchEvent(new Event('input'));
     seguir();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   } catch (err) { toast(err.message || err); }
@@ -175,12 +192,53 @@ function msgChofer(nombre) {
     `${({ viaje: '🏍️ Viaje', encomienda: '📦 Encomienda', compra: '🛒 Compra' })[actual.tipo] || '🏍️ Viaje'}\n` +
     `📍 Desde: ${actual.desde}\n📍 Hasta: ${actual.hasta}` +
     (actual.referencia ? `\n📝 ${actual.referencia}` : '') +
+    (Number(String(actual.oferta || '').replace(',', '.')) > 0 ? `\n💰 Ofrezco: $${actual.oferta}` : '') +
+    `\n💳 Pago: ${actual.metodoPago === 'pagomovil' ? 'Pago Móvil' : 'Efectivo'}` +
     `\n¿Me confirmas, por favor?`;
 }
 const num = (n, d = 2) => Number(n || 0).toLocaleString('es-VE', { minimumFractionDigits: d, maximumFractionDigits: d });
+const tasaHoy = () => (CFG.tasa && CFG.tasa.tasa) || 0;
+$('#oferta').addEventListener('input', () => {
+  const v = Number(String($('#oferta').value).replace(',', '.')) || 0, t = tasaHoy();
+  $('#ofertaBs').textContent = v && t ? `= Bs ${num(v * t)} (tasa BCV ${num(t)}). El chofer puede aceptarla o proponerte otro precio.` : 'El chofer puede aceptar tu oferta o proponerte otro precio.';
+});
+
+/* ----- Pago Móvil: datos del chofer + comprobante ----- */
+let subiendo = false;
+function bloquePago(r) {
+  if (r.metodoPago !== 'pagomovil') return `<div class="mute" style="margin-top:8px">💵 Pagas en efectivo al chofer</div>`;
+  const pm = r.pagoMovil || {};
+  const monto = r.precioBs ? num(r.precioBs) : '';
+  const fila = (t, v) => `<div class="dato"><span class="mute">${t}</span><b>${esc(v || '—')}</b>${v ? `<button class="btn ghost copiar" data-copiar="${esc(v)}">Copiar</button>` : ''}</div>`;
+  const estado = r.pagoEstado === 'confirmado' ? '<span class="estadoPago confirmado">✅ Pago confirmado por el chofer</span>'
+    : r.pagoEstado === 'enviado' ? '<span class="estadoPago enviado">⏳ Comprobante enviado, el chofer lo está revisando</span>' : '';
+  return `<div class="pago">
+    <h3>📱 Paga por Pago Móvil</h3>
+    ${fila('Banco', pm.banco)}${fila('Teléfono', pm.telefono)}${fila('Cédula', pm.cedula)}${fila('Monto (Bs)', monto)}
+    ${r.pagoEstado !== 'confirmado' ? `<label class="btn block ${r.pagoEstado === 'enviado' ? 'ghost' : ''}" style="margin-top:10px">
+      📎 ${r.pagoEstado === 'enviado' ? 'Enviar otro comprobante' : 'Adjuntar comprobante (captura)'}
+      <input type="file" accept="image/*" id="compIn" class="hide"></label>` : ''}
+    ${estado}
+  </div>`;
+}
+/* Reduce la captura (máx. 1200 px) para que suba rápido */
+function comprimir(file) {
+  return new Promise((res, rej) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const k = Math.min(1, 1200 / Math.max(img.width, img.height));
+      const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url); res(c.toDataURL('image/jpeg', 0.75));
+    };
+    img.onerror = () => rej(new Error('No se pudo leer la imagen'));
+    img.src = url;
+  });
+}
 
 async function seguir() {
   clearTimeout(timerEstado);
+  if (subiendo) { timerEstado = setTimeout(seguir, 3000); return; }
   const card = $('#estadoCard');
   if (!actual) { card.classList.add('hide'); $('#form').classList.remove('hide'); return; }
   card.classList.remove('hide'); $('#form').classList.add('hide');
@@ -190,6 +248,8 @@ async function seguir() {
   if (r.estado === 'pendiente') {
     const pref = choferes.find(c => c.id === actual.preferido && c.telefono);
     card.innerHTML = `<div class="spin"></div><h2>Buscando chofer…</h2>${ruta}
+      ${r.ofertaUsd ? `<div style="margin-top:6px"><b>💰 Ofreciste $${num(r.ofertaUsd)}</b></div>` : ''}
+      <div class="mute">${r.metodoPago === 'pagomovil' ? '📱 Pago Móvil' : '💵 Efectivo'}</div>
       <p class="mute">Los choferes disponibles están viendo tu solicitud. No cierres esta página.</p>
       <div class="actions">
         ${pref ? `<a class="btn wa sm" target="_blank" href="${waLink(pref.telefono, msgChofer(pref.nombre))}">Avisar a ${esc(pref.nombre.split(' ')[0])} por WhatsApp</a>` : ''}
@@ -202,6 +262,8 @@ async function seguir() {
       <div class="mute">${esc(r.choferMoto || '')}</div>${ruta}
       ${r.precioUsd ? `<div style="margin-top:10px;font-size:22px;font-weight:800">💵 $${num(r.precioUsd)}</div>
         ${r.precioBs ? `<div class="mute">Bs ${num(r.precioBs)} · tasa BCV ${num(r.tasa)}</div>` : ''}` : ''}
+      ${r.ofertaUsd && r.precioUsd && Math.abs(r.ofertaUsd - r.precioUsd) > 0.001 ? `<div class="mute">(Ofreciste $${num(r.ofertaUsd)}; el chofer propone $${num(r.precioUsd)})</div>` : ''}
+      ${bloquePago(r)}
       <div class="actions">
         <a class="btn wa sm" target="_blank" href="${waLink(r.choferTelefono, msgChofer(r.choferNombre))}">WhatsApp</a>
         <a class="btn sm" href="tel:${esc(r.choferTelefono)}">📞 Llamar</a>
@@ -212,11 +274,27 @@ async function seguir() {
     const txt = { completada: ['🎉', '¡Servicio completado!', 'Gracias por usar el transporte de la comunidad.'],
                   expirada: ['⏱️', 'Nadie tomó la solicitud', 'Puede que todos estén ocupados. Intenta de nuevo o escribe al grupo.'],
                   cancelada: ['✖️', 'Solicitud cancelada', ''] }[r.estado] || ['ℹ️', 'Solicitud cerrada', ''];
+    const faltaPago = r.estado === 'completada' && r.metodoPago === 'pagomovil' && r.pagoEstado !== 'confirmado';
     card.innerHTML = `<div class="big">${txt[0]}</div><h2>${txt[1]}</h2><p class="mute">${txt[2]}</p>
+      ${faltaPago ? bloquePago(r) : ''}
       <div class="actions"><button class="btn" id="nueva">Pedir otro servicio</button></div>`;
+    if (faltaPago) timerEstado = setTimeout(seguir, 15000);
   }
 }
+$('#estadoCard').addEventListener('change', async e => {
+  if (e.target.id !== 'compIn' || !e.target.files[0]) return;
+  subiendo = true;
+  const lbl = e.target.closest('label'); if (lbl) lbl.firstChild.textContent = '⏳ Subiendo comprobante… ';
+  try {
+    const imagen = await comprimir(e.target.files[0]);
+    await call('subirComprobante', { id: actual.id, telefono: actual.telefono, imagen });
+    toast('Comprobante enviado ✅');
+  } catch (err) { toast(err.message || err); }
+  subiendo = false; seguir();
+});
 $('#estadoCard').addEventListener('click', async e => {
+  const cp = e.target.closest('[data-copiar]');
+  if (cp) { try { await navigator.clipboard.writeText(cp.dataset.copiar); toast('Copiado: ' + cp.dataset.copiar); } catch (err) { prompt('Copia este dato:', cp.dataset.copiar); } return; }
   if (e.target.id === 'nueva') { actual = null; store.del('mb_solicitud'); seguir(); }
   if (e.target.id === 'cancelar') {
     if (!confirm('¿Cancelar la solicitud?')) return;

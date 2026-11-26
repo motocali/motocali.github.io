@@ -66,6 +66,9 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:8px 6px;b
         <div><label>Teléfono (WhatsApp)</label><input name="telefono" required inputmode="tel" placeholder="0414…"></div>
         <div><label>PIN (4–6 números)</label><input name="pin" required inputmode="numeric" pattern="\d{4,6}"></div>
         <div><label>Moto (marca, color, placa)</label><input name="moto" maxlength="60"></div>
+        <div><label>Plan</label><select name="plan" style="width:100%;padding:11px;border:1px solid var(--line);border-radius:12px;font:inherit;background:var(--bg);color:var(--ink)">
+          <option value="normal">Chofer (inscripción + cuota semanal)</option><option value="socio">🤝 Socio fundador (sin cuotas)</option></select></div>
+        <div><label>Fecha de inicio</label><input name="inicio" type="date"></div>
       </div>
       <label class="chk"><input type="checkbox" name="activo" checked> Activo (puede entrar y aparece en la lista)</label>
       <div class="row" style="margin-top:14px">
@@ -73,6 +76,28 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:8px 6px;b
         <button type="button" class="btn ghost hide" id="cancelarEd">Cancelar edición</button>
       </div>
     </form>
+
+    <div class="card">
+      <h2>💰 Cobro a choferes</h2>
+      <div id="resumenCobro" class="mute"></div>
+      <div id="pagosRev" style="margin-top:8px"></div>
+      <details style="margin-top:12px"><summary style="cursor:pointer;font-weight:700">⚙️ Montos y tus datos de Pago Móvil</summary>
+        <form id="fCobro">
+          <div class="grid">
+            <div><label>Inscripción ($)</label><input name="inscripcion" inputmode="decimal"></div>
+            <div><label>Cuota semanal ($)</label><input name="semanal" inputmode="decimal"></div>
+            <div><label>Semanas gratis al empezar</label><input name="semanasGratis" inputmode="numeric"></div>
+            <div><label>Días para pagar (gracia)</label><input name="diasGracia" inputmode="numeric"></div>
+            <div><label>Tu banco</label><input name="pmBanco" maxlength="40"></div>
+            <div><label>Tu teléfono Pago Móvil</label><input name="pmTelefono" inputmode="tel"></div>
+            <div><label>Tu cédula/RIF</label><input name="pmCedula" maxlength="15"></div>
+            <div><label>Titular (opcional)</label><input name="pmTitular" maxlength="60"></div>
+          </div>
+          <button class="btn" style="margin-top:12px">Guardar</button>
+          <div class="mute" style="margin-top:6px">Cada semana va de lunes a domingo. La cuota de una semana vence a los días de gracia contados desde su lunes; si no paga, el chofer no puede aceptar viajes hasta enviar el comprobante.</div>
+        </form>
+      </details>
+    </div>
 
     <div class="card">
       <h2>🏍️ Choferes <span class="mute" id="nCh"></span></h2>
@@ -142,7 +167,8 @@ function pintar() {
       ${c.foto ? `<img class="av" src="${esc(c.foto)}" alt="">` : `<div class="av">${esc(c.nombre[0] || '?')}</div>`}
       <div class="grow"><b>${esc(c.nombre)}</b> ${c.activo ? `<span class="pill ${c.estado}">${EST[c.estado]}</span>` : '<span class="pill inactivo">Inactivo</span>'}
         <div class="mute">📱 ${esc(c.telefono)} · PIN ${esc(c.pin)}${c.moto ? ' · ' + esc(c.moto) : ''}</div>
-        ${c.zona ? `<div class="mute">📍 ${esc(c.zona)}</div>` : ''}</div>
+        ${c.zona ? `<div class="mute">📍 ${esc(c.zona)}</div>` : ''}
+        <div style="margin-top:4px">${estadoCuenta(c)}</div></div>
       <div class="row">
         <a class="btn sm wa" target="_blank" href="https://wa.me/${wa(c.telefono)}?text=${encodeURIComponent(acceso)}">Enviar acceso</a>
         <button class="btn sm ghost" data-edit="${esc(c.id)}">Editar</button>
@@ -161,9 +187,57 @@ function pintar() {
       <div class="mute">${{ pendiente: '', enviado: '🧾 enviado', confirmado: '✅ confirmado' }[s.pagoEstado] || ''}</div>
       ${s.tieneComprobante ? `<button class="btn sm ghost" data-vercomp="${esc(s.id)}">Ver</button>` : ''}</td></tr>`).join('') : '<tr><td colspan="7" class="mute">Sin solicitudes todavía.</td></tr>';
   pintarTasa();
+  pintarCobro();
+}
+
+/* ----- Cobro a choferes ----- */
+function estadoCuenta(c) {
+  const k = c.cuenta || {};
+  if (c.plan === 'socio' || k.socio) return '<span class="pill completada">🤝 Socio · sin cuotas</span>';
+  if (k.bloqueado) return `<span class="pill" style="background:#fde2e1;color:#a61b1b">⛔ Atrasado · debe $${num(k.deuda)}</span>`;
+  if (k.enRevision) return `<span class="pill pendiente">🧾 Pago en revisión</span>${k.deuda ? ` <span class="mute">debe $${num(k.deuda)}</span>` : ''}`;
+  if (k.deuda) return `<span class="pill pendiente">Debe $${num(k.deuda)}</span>`;
+  return '<span class="pill completada">✅ Al día</span>';
+}
+function pintarCobro() {
+  const cb = datos.cobro || {}, f = $('#fCobro');
+  ['inscripcion', 'semanal', 'semanasGratis', 'diasGracia', 'pmBanco', 'pmTelefono', 'pmCedula', 'pmTitular'].forEach(k => { if (document.activeElement !== f[k]) f[k].value = cb[k] ?? ''; });
+  const norm = datos.choferes.filter(c => c.plan !== 'socio');
+  const atras = norm.filter(c => c.cuenta && c.cuenta.bloqueado);
+  const porCobrar = norm.reduce((a, c) => a + ((c.cuenta && c.cuenta.deuda) || 0), 0);
+  $('#resumenCobro').innerHTML = `Inscripción <b>$${num(cb.inscripcion)}</b> · Cuota <b>$${num(cb.semanal)}</b>/semana · ` +
+    `${datos.choferes.length - norm.length} socio(s) · ${norm.length} chofer(es) que pagan · Por cobrar: <b>$${num(porCobrar)}</b>` +
+    (atras.length ? ` · <b style="color:#c53030">${atras.length} atrasado(s)</b>` : '') +
+    (!cb.pmBanco ? '<div style="color:#c53030;margin-top:4px">⚠️ Falta poner tus datos de Pago Móvil (abajo), si no los choferes no sabrán dónde pagar.</div>' : '');
+  const rev = (datos.pagos || []).filter(p => p.estado === 'pendiente');
+  $('#pagosRev').innerHTML = rev.length ? '<b>🧾 Pagos por revisar</b>' + rev.map(p => `
+    <div class="drv"><div class="grow"><b>${esc(p.choferNombre)}</b> · $${num(p.montoUsd)}${p.montoBs ? ` <span class="mute">(Bs ${num(p.montoBs)})</span>` : ''}
+      <div class="mute">${esc(p.conceptos.join(', '))} · ${new Date(p.fecha).toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</div></div>
+      <div class="row"><button class="btn sm ghost" data-verpago="${esc(p.id)}">Ver captura</button>
+      <button class="btn sm" data-okpago="${esc(p.id)}">✅ Confirmar</button>
+      <button class="btn sm danger" data-nopago="${esc(p.id)}">Rechazar</button></div></div>`).join('') : '<div class="mute">No hay pagos por revisar.</div>';
+}
+$('#fCobro').addEventListener('submit', async e => {
+  e.preventDefault(); const f = e.target;
+  const cobro = Object.fromEntries(['inscripcion', 'semanal', 'semanasGratis', 'diasGracia', 'pmBanco', 'pmTelefono', 'pmCedula', 'pmTitular'].map(k => [k, f[k].value]));
+  try { await call('adminGuardarCobro', { clave, cobro }); toast('Datos de cobro guardados'); cargar(); } catch (err) { toast(err.message || err); }
+});
+function verImagen(src) {
+  const w = window.open('', '_blank');
+  if (w) w.document.write(`<title>Comprobante</title><body style="margin:0;background:#111;display:flex;justify-content:center"><img src="${src}" style="max-width:100%;max-height:100vh">`);
+  else toast('Permite ventanas emergentes para ver la captura');
 }
 
 document.addEventListener('click', async e => {
+  const vp = e.target.closest('[data-verpago]');
+  if (vp) { try { const r = await call('adminVerPago', { clave, id: vp.dataset.verpago }); verImagen(r.imagen); } catch (err) { toast(err.message || err); } return; }
+  const rp = e.target.closest('[data-okpago],[data-nopago]');
+  if (rp) {
+    const aprobar = !!rp.dataset.okpago;
+    if (!aprobar && !confirm('¿Rechazar este pago? El chofer tendrá que enviar otro comprobante.')) return;
+    try { await call('adminRevisarPago', { clave, id: rp.dataset.okpago || rp.dataset.nopago, aprobar }); toast(aprobar ? 'Pago confirmado ✅' : 'Pago rechazado'); cargar(); } catch (err) { toast(err.message || err); }
+    return;
+  }
   const vc = e.target.closest('[data-vercomp]');
   if (vc) {
     try {
@@ -180,6 +254,8 @@ document.addEventListener('click', async e => {
   if (ed) {
     const c = datos.choferes.find(x => x.id === ed.dataset.edit); const f = $('#fChofer');
     f.id.value = c.id; f.nombre.value = c.nombre; f.telefono.value = c.telefono; f.pin.value = c.pin; f.moto.value = c.moto || ''; f.activo.checked = c.activo;
+    f.plan.value = c.plan === 'socio' ? 'socio' : 'normal';
+    f.inicio.value = c.inicio ? new Date(c.inicio - 4 * 3600000).toISOString().slice(0, 10) : '';
     $('#fTitulo').textContent = '✏️ Editar chofer'; $('#cancelarEd').classList.remove('hide'); f.scrollIntoView({ behavior: 'smooth' });
   }
   const del = e.target.closest('[data-del]');
@@ -191,12 +267,13 @@ document.addEventListener('click', async e => {
 });
 function limpiarForm() {
   const f = $('#fChofer'); f.reset(); f.id.value = ''; f.pin.value = String(Math.floor(1000 + Math.random() * 9000));
+  f.inicio.value = new Date(Date.now() - 4 * 3600000).toISOString().slice(0, 10);
   $('#fTitulo').textContent = '➕ Agregar chofer'; $('#cancelarEd').classList.add('hide');
 }
 $('#cancelarEd').addEventListener('click', limpiarForm);
 $('#fChofer').addEventListener('submit', async e => {
   e.preventDefault(); const f = e.target;
-  const chofer = { id: f.id.value, nombre: f.nombre.value, telefono: f.telefono.value, pin: f.pin.value, moto: f.moto.value, activo: f.activo.checked };
+  const chofer = { id: f.id.value, nombre: f.nombre.value, telefono: f.telefono.value, pin: f.pin.value, moto: f.moto.value, activo: f.activo.checked, plan: f.plan.value, inicio: f.inicio.value };
   try { await call('adminGuardarChofer', { clave, chofer }); toast('Chofer guardado'); limpiarForm(); cargar(); } catch (err) { toast(err.message || err); }
 });
 

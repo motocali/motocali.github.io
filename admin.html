@@ -106,7 +106,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:8px 6px;b
 
     <div class="card">
       <h2>📋 Últimas solicitudes</h2>
-      <div class="scroll"><table><thead><tr><th>Hora</th><th>Cliente</th><th>Ruta</th><th>Estado</th><th>Chofer</th><th>Precio</th><th>Pago</th></tr></thead><tbody id="sols"></tbody></table></div>
+      <div class="scroll"><table><thead><tr><th>Hora</th><th>Cliente</th><th>Ruta</th><th>Estado</th><th>Chofer</th><th>Precio</th><th>Pago</th><th>Calificación</th></tr></thead><tbody id="sols"></tbody></table></div>
     </div>
   </div>
 </div>
@@ -168,6 +168,7 @@ function pintar() {
       <div class="grow"><b>${esc(c.nombre)}</b> ${c.activo ? `<span class="pill ${c.estado}">${EST[c.estado]}</span>` : '<span class="pill inactivo">Inactivo</span>'}
         <div class="mute">📱 ${esc(c.telefono)} · PIN ${esc(c.pin)}${c.moto ? ' · ' + esc(c.moto) : ''}</div>
         ${c.zona ? `<div class="mute">📍 ${esc(c.zona)}</div>` : ''}
+        <div class="mute">${c.calif && c.calif.n ? `⭐ <b style="color:var(--ink)">${num(c.calif.prom, 1)}</b> (${c.calif.n})` : '⭐ sin calificaciones'}${c.ganancias ? ` · Semana: ${c.ganancias.semana.n} carrera(s), $${num(c.ganancias.semana.usd)}` : ''}</div>
         <div style="margin-top:4px">${estadoCuenta(c)}</div></div>
       <div class="row">
         <a class="btn sm wa" target="_blank" href="https://wa.me/${wa(c.telefono)}?text=${encodeURIComponent(acceso)}">Enviar acceso</a>
@@ -179,13 +180,14 @@ function pintar() {
   $('#sols').innerHTML = datos.solicitudes.length ? datos.solicitudes.map(s => `<tr>
     <td>${new Date(s.fecha).toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
     <td>${esc(s.cliente)}<div class="mute">${esc(s.telefono)}</div></td>
-    <td>${esc(s.desde)} → ${esc(s.hasta)}<div class="mute">${esc(s.tipo)}</div></td>
+    <td>${esc(s.desde)} → ${esc(s.hasta)}<div class="mute">${esc(s.tipo)}${s.lat ? ` · <a target="_blank" href="https://maps.google.com/?q=${s.lat},${s.lng}">📍 mapa</a>` : ''}</div></td>
     <td><span class="pill ${s.estado}">${esc(s.estado)}</span></td>
     <td>${esc(s.choferNombre || '—')}</td>
     <td>${s.precioUsd ? '$' + num(s.precioUsd) + (s.precioBs ? `<div class="mute">Bs ${num(s.precioBs)}</div>` : '') : '—'}${s.ofertaUsd ? `<div class="mute">ofreció $${num(s.ofertaUsd)}</div>` : ''}</td>
     <td>${s.metodoPago === 'pagomovil' ? '📱 P. Móvil' : '💵 Efectivo'}
       <div class="mute">${{ pendiente: '', enviado: '🧾 enviado', confirmado: '✅ confirmado' }[s.pagoEstado] || ''}</div>
-      ${s.tieneComprobante ? `<button class="btn sm ghost" data-vercomp="${esc(s.id)}">Ver</button>` : ''}</td></tr>`).join('') : '<tr><td colspan="7" class="mute">Sin solicitudes todavía.</td></tr>';
+      ${s.tieneComprobante ? `<button class="btn sm ghost" data-vercomp="${esc(s.id)}">Ver</button>` : ''}</td>
+    <td>${s.calificacion ? `<span style="color:#f5a623">${'★'.repeat(s.calificacion)}</span><span class="mute">${'★'.repeat(5 - s.calificacion)}</span>${s.comentario ? `<div class="mute">“${esc(s.comentario)}”</div>` : ''}` : '<span class="mute">—</span>'}</td></tr>`).join('') : '<tr><td colspan="8" class="mute">Sin solicitudes todavía.</td></tr>';
   pintarTasa();
   pintarCobro();
 }

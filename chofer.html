@@ -57,6 +57,11 @@ input{width:100%;padding:12px;border:1px solid var(--line);border-radius:12px;fo
 .aviso{padding:10px 12px;border-radius:12px;font-weight:650;font-size:14px;margin:8px 0}
 .aviso.mal{background:#fde2e1;color:#a61b1b}.aviso.bien{background:var(--ok-bg);color:var(--ok)}.aviso.espera{background:var(--busy-bg);color:var(--busy)}
 .pmdato{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0;font-size:14px}
+.nums{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center}
+.nums div{background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:10px 4px}
+.nums b{display:block;font-size:20px}
+.nums span{font-size:12px;color:var(--mute)}
+.gpsTag{display:inline-block;font-size:12px;font-weight:700;padding:2px 8px;border-radius:99px;background:var(--ok-bg);color:var(--ok);margin-left:4px}
 </style>
 </head>
 <body>
@@ -82,6 +87,11 @@ input{width:100%;padding:12px;border:1px solid var(--line);border-radius:12px;fo
         <div class="mute" id="pTel"></div>
         <button class="btn ghost sm" style="margin-top:8px" id="editar">Editar datos</button>
       </div>
+    </div>
+
+    <div class="card">
+      <h2>📊 Mis números</h2>
+      <div class="nums" id="nums"><div><b>—</b><span>Calificación</span></div><div><b>—</b><span>Hoy</span></div><div><b>—</b><span>Esta semana</span></div></div>
     </div>
 
     <div class="card" id="cuentaCard">
@@ -258,11 +268,31 @@ async function refrescar() {
     const r = await call('choferSolicitudes', conCred());
     perfil = r.perfil; pintarPerfil();
     if (r.cuenta) pintarCuenta(r.cuenta);
+    pintarNums(r.calificacion, r.ganancias);
     pintarMias(r.mias); pintarPend(r.pendientes);
   } catch (err) {
     if (/PIN/.test(err.message || '')) { $('#salir').click(); toast(err.message); return; }
   }
   timer = setTimeout(refrescar, 15000);
+}
+/* ----- 📊 Calificación y ganancias ----- */
+function pintarNums(cal, g) {
+  if (!g) return;
+  cal = cal || { prom: 0, n: 0 };
+  const caja = (v, t) => `<div><b>${v}</b><span>${t}</span></div>`;
+  $('#nums').innerHTML =
+    caja(cal.n ? '⭐ ' + num(cal.prom, 1) : '—', cal.n ? cal.n + (cal.n === 1 ? ' calificación' : ' calificaciones') : 'Aún sin calificar') +
+    caja(usd(g.hoy.usd), 'Hoy · ' + g.hoy.n + ' carrera' + (g.hoy.n === 1 ? '' : 's')) +
+    caja(usd(g.semana.usd), 'Semana · ' + g.semana.n + ' carrera' + (g.semana.n === 1 ? '' : 's'));
+}
+/* ----- 📍 Ubicación del cliente: en el APK abre Google Maps directo ----- */
+function linksMapa(s) {
+  if (!s.lat || !s.lng) return '';
+  const p = s.lat + ',' + s.lng, app = !!window.AndroidApp;
+  const ver = app ? `geo:${p}?q=${p}` : `https://maps.google.com/?q=${p}`;
+  const ir = app ? `google.navigation:q=${p}` : `https://www.google.com/maps/dir/?api=1&destination=${p}`;
+  return `<a class="btn ghost sm" ${app ? '' : 'target="_blank"'} href="${ver}">🗺️ Ver ubicación</a>
+    <a class="btn ghost sm" ${app ? '' : 'target="_blank"'} href="${ir}">🧭 Cómo llegar</a>`;
 }
 function pintarPend(list) {
   const nuevos = list.filter(s => !vistos.has(s.id));
@@ -275,9 +305,10 @@ function pintarPend(list) {
     <div class="sol ${s.paraTi ? 'ti' : ''}">
       <div class="row" style="justify-content:space-between"><b>${TIPO[s.tipo] || s.tipo}</b><span class="mute">${hace(s.fecha)}</span></div>
       ${s.paraTi ? '<span class="tag">Te eligieron a ti</span>' : ''}
-      <div class="ruta"><span class="mute">Desde</span><b>${esc(s.desde)}</b><span class="mute">Hasta</span><b>${esc(s.hasta)}</b></div>
+      <div class="ruta"><span class="mute">Desde${s.lat ? '<span class="gpsTag">📍 con GPS</span>' : ''}</span><b>${esc(s.desde)}</b><span class="mute">Hasta</span><b>${esc(s.hasta)}</b></div>
       ${s.referencia ? `<div class="mute">📝 ${esc(s.referencia)}</div>` : ''}
       <div class="mute">👤 ${esc(s.cliente)} · ${s.metodoPago === 'pagomovil' ? '📱 Pago Móvil' : '💵 Efectivo'}</div>
+      ${s.lat ? `<div class="acts">${linksMapa(s)}</div>` : ''}
       ${s.ofertaUsd ? `<div class="precio">💰 Ofrece ${usd(s.ofertaUsd)}${tasaHoy() ? ` · ${bs(s.ofertaUsd * tasaHoy())}` : ''}</div>` : '<div class="mute">El cliente no indicó presupuesto</div>'}
       <div class="acts"><button class="btn" data-acc="aceptar" data-id="${esc(s.id)}" data-ruta="${esc(s.desde + ' → ' + s.hasta)}" data-oferta="${s.ofertaUsd || ''}" data-metodo="${esc(s.metodoPago || 'efectivo')}">Aceptar y poner precio</button></div>
     </div>`).join('') : '<div class="empty">No hay solicitudes por ahora.</div>';
@@ -303,6 +334,7 @@ function pintarMias(list) {
       ${s.referencia ? `<div class="mute">📝 ${esc(s.referencia)}</div>` : ''}
       ${s.precioUsd ? `<div class="precio">💵 ${usd(s.precioUsd)}${s.precioBs ? ` · ${bs(s.precioBs)}` : ''}</div>` : ''}
       <div class="mute">${s.metodoPago === 'pagomovil' ? '📱 Paga por Pago Móvil' : '💵 Paga en efectivo'} ${PAGO[s.pagoEstado] || ''}</div>
+      ${s.lat && s.estado === 'aceptada' ? `<div class="acts">${linksMapa(s)}</div>` : ''}
       ${s.tieneComprobante ? `<div class="acts"><button class="btn ghost sm" data-comp="${esc(s.id)}">🧾 Ver comprobante</button>${s.pagoEstado !== 'confirmado' ? `<button class="btn sm" data-okpago="${esc(s.id)}">✅ Pago recibido</button>` : ''}</div>` : ''}
       <div class="acts">
         <a class="btn wa sm" target="_blank" href="${waLink(s.telefono, msg)}">WhatsApp</a>

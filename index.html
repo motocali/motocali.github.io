@@ -57,6 +57,15 @@ textarea{resize:vertical;min-height:60px}
 .estadoPago{display:inline-block;margin-top:8px;padding:6px 12px;border-radius:99px;font-weight:700;font-size:13px}
 .estadoPago.enviado{background:var(--busy-bg);color:var(--busy)}
 .estadoPago.confirmado{background:var(--ok-bg);color:var(--ok)}
+.estr{color:#f5a623;font-weight:700;font-size:13px;white-space:nowrap}
+.gps{margin-top:8px;padding:10px 12px;border-radius:12px;background:var(--ok-bg);color:var(--ok);font-size:14px;font-weight:600;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.gps a,.gps button{color:inherit;font:inherit;font-weight:700;background:none;border:0;padding:0;text-decoration:underline;cursor:pointer}
+.gps.err{background:#fde2e1;color:#a61b1b}
+.stars{display:flex;justify-content:center;gap:6px;margin:8px 0}
+.stars button{font-size:36px;line-height:1;background:none;border:0;cursor:pointer;padding:2px;filter:grayscale(1);opacity:.45;transition:.15s}
+.stars button.on{filter:none;opacity:1;transform:scale(1.08)}
+.califBox{margin-top:14px;border:2px solid var(--brand2);border-radius:14px;padding:12px}
+.seguro{margin-top:12px;padding:10px 12px;border-radius:12px;background:var(--off-bg);font-size:13px;text-align:left}
 </style>
 </head>
 <body>
@@ -91,6 +100,9 @@ textarea{resize:vertical;min-height:60px}
     </div>
     <label>¿Desde dónde?</label>
     <input name="desde" required maxlength="140" placeholder="Ej: Calle 3, casa azul frente a la bodega">
+    <button type="button" class="btn ghost block" id="gpsBtn" style="margin-top:8px">📍 Enviar mi ubicación exacta (recomendado)</button>
+    <div id="gpsInfo" class="hide"></div>
+    <input type="hidden" name="lat" id="lat"><input type="hidden" name="lng" id="lng">
     <label>¿Hacia dónde?</label>
     <input name="hasta" required maxlength="140" placeholder="Ej: Terminal / Mercado / Sector X">
     <label>Referencia o nota (opcional)</label>
@@ -130,6 +142,9 @@ const TIPO = { viaje: 'un viaje', encomienda: 'llevar una encomienda', compra: '
 function avatar(c) { return c.foto ? `<img class="av" src="${esc(c.foto)}" alt="">` : `<div class="av ini">${esc((c.nombre || '?').split(' ').map(p => p[0]).slice(0, 2).join(''))}</div>`; }
 function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 3200); }
 
+function estrellas(p, n) { return p ? `<span class="estr">⭐ ${num(p, 1)}${n ? ` <span class="mute">(${n})</span>` : ''}</span>` : '<span class="mute" style="font-size:12px">Nuevo · sin calificaciones</span>'; }
+const mapa = (lat, lng) => `https://maps.google.com/?q=${lat},${lng}`;
+
 let choferes = [];
 const orden = { disponible: 0, en_carrera: 1, no_disponible: 2 };
 
@@ -149,6 +164,7 @@ function pintarChoferes() {
       ${avatar(c)}
       <div class="grow">
         <b>${esc(c.nombre)}</b>
+        ${estrellas(c.calificacion, c.nCalif)}
         <div class="mute">${esc(c.moto || 'Moto')}${c.zona ? ' · 📍 ' + esc(c.zona) : ''}</div>
         <span class="pill ${c.estado}">${EST[c.estado]}</span> <span class="mute">${hace(c.actualizado)}</span>
       </div>
@@ -179,7 +195,7 @@ $('#form').addEventListener('submit', async e => {
     store.set('mb_cliente', { cliente: f.cliente, telefono: f.telefono });
     actual = Object.assign({ id: r.id }, f);
     store.set('mb_solicitud', actual);
-    e.target.reset(); rellenarCliente(); $('#oferta').dispatchEvent(new Event('input'));
+    e.target.reset(); quitarGps(); rellenarCliente(); $('#oferta').dispatchEvent(new Event('input'));
     seguir();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   } catch (err) { toast(err.message || err); }
@@ -191,6 +207,7 @@ function msgChofer(nombre) {
     `Soy ${actual.cliente}. Hice una solicitud en ${CFG.nombre}:\n` +
     `${({ viaje: '🏍️ Viaje', encomienda: '📦 Encomienda', compra: '🛒 Compra' })[actual.tipo] || '🏍️ Viaje'}\n` +
     `📍 Desde: ${actual.desde}\n📍 Hasta: ${actual.hasta}` +
+    (actual.lat && actual.lng ? `\n🗺️ Mi ubicación: ${mapa(actual.lat, actual.lng)}` : '') +
     (actual.referencia ? `\n📝 ${actual.referencia}` : '') +
     (Number(String(actual.oferta || '').replace(',', '.')) > 0 ? `\n💰 Ofrezco: $${actual.oferta}` : '') +
     `\n💳 Pago: ${actual.metodoPago === 'pagomovil' ? 'Pago Móvil' : 'Efectivo'}` +
@@ -202,6 +219,57 @@ $('#oferta').addEventListener('input', () => {
   const v = Number(String($('#oferta').value).replace(',', '.')) || 0, t = tasaHoy();
   $('#ofertaBs').textContent = v && t ? `= Bs ${num(v * t)} (tasa BCV ${num(t)}). El chofer puede aceptarla o proponerte otro precio.` : 'El chofer puede aceptar tu oferta o proponerte otro precio.';
 });
+
+/* ----- 📍 Ubicación exacta (GPS del teléfono) ----- */
+function quitarGps() {
+  $('#lat').value = ''; $('#lng').value = '';
+  $('#gpsInfo').className = 'hide'; $('#gpsBtn').classList.remove('hide');
+}
+$('#gpsBtn').addEventListener('click', () => {
+  const info = $('#gpsInfo'), btn = $('#gpsBtn');
+  if (!navigator.geolocation) { info.className = 'gps err'; info.textContent = 'Tu teléfono no permite compartir la ubicación desde aquí.'; return; }
+  btn.disabled = true; btn.textContent = '⏳ Buscando tu ubicación…';
+  navigator.geolocation.getCurrentPosition(p => {
+    const lat = p.coords.latitude.toFixed(6), lng = p.coords.longitude.toFixed(6);
+    $('#lat').value = lat; $('#lng').value = lng;
+    if (!$('[name=desde]').value.trim()) $('[name=desde]').value = 'Mi ubicación (ver mapa)';
+    info.className = 'gps';
+    info.innerHTML = `✅ Ubicación agregada${p.coords.accuracy ? ` (±${Math.round(p.coords.accuracy)} m)` : ''} · <a href="${mapa(lat, lng)}" target="_blank">Ver en el mapa</a> · <button type="button" id="gpsQuitar">Quitar</button>`;
+    btn.classList.add('hide'); btn.disabled = false; btn.textContent = '📍 Enviar mi ubicación exacta (recomendado)';
+  }, err => {
+    btn.disabled = false; btn.textContent = '📍 Enviar mi ubicación exacta (recomendado)';
+    info.className = 'gps err';
+    info.textContent = err.code === 1 ? 'No diste permiso de ubicación. Actívalo en tu navegador o escribe la dirección con una buena referencia.'
+      : 'No pudimos obtener tu ubicación. Activa el GPS e inténtalo de nuevo, o escribe la dirección.';
+  }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 });
+});
+$('#gpsInfo').addEventListener('click', e => { if (e.target.id === 'gpsQuitar') quitarGps(); });
+
+/* ----- 🛡️ Viaje seguro: compartir los datos del viaje con alguien de confianza ----- */
+function msgSeguro(r) {
+  return `🛡️ *Viaje seguro con ${CFG.nombre}*\n` +
+    `Voy ${actual.tipo === 'viaje' ? 'en un mototaxi' : 'con un servicio de mototaxi'} de la comunidad:\n` +
+    `👤 Chofer: ${r.choferNombre}${r.choferCalif ? ` (⭐ ${num(r.choferCalif, 1)})` : ''}\n` +
+    (r.choferMoto ? `🏍️ Moto: ${r.choferMoto}\n` : '') +
+    (r.choferTelefono ? `📱 Tel. del chofer: ${r.choferTelefono}\n` : '') +
+    `📍 Desde: ${actual.desde}\n📍 Hasta: ${actual.hasta}\n` +
+    (actual.lat && actual.lng ? `🗺️ Me recogen aquí: ${mapa(actual.lat, actual.lng)}\n` : '') +
+    `🕒 Salida: ${new Date().toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })}\n` +
+    `Te aviso cuando llegue 🙏`;
+}
+
+/* ----- ⭐ Calificación al terminar ----- */
+let califSel = 0;
+function bloqueCalif(r) {
+  if (r.estado !== 'completada' || !r.choferNombre) return '';
+  if (r.calificacion) return `<div class="califBox"><b>Calificaste a ${esc(r.choferNombre.split(' ')[0])} con ${'⭐'.repeat(r.calificacion)}</b><div class="mute">¡Gracias! Tu opinión ayuda a mejorar el servicio.</div></div>`;
+  return `<div class="califBox" id="califBox">
+    <b>¿Cómo te fue con ${esc(r.choferNombre.split(' ')[0])}?</b>
+    <div class="stars">${[1, 2, 3, 4, 5].map(k => `<button type="button" data-star="${k}" class="${k <= califSel ? 'on' : ''}" aria-label="${k} estrellas">⭐</button>`).join('')}</div>
+    <textarea id="califTxt" maxlength="200" placeholder="Comentario (opcional)"></textarea>
+    <button class="btn block" id="califOk" style="margin-top:8px" ${califSel ? '' : 'disabled'}>Enviar calificación</button>
+  </div>`;
+}
 
 /* ----- Pago Móvil: datos del chofer + comprobante ----- */
 let subiendo = false;
@@ -238,7 +306,7 @@ function comprimir(file) {
 
 async function seguir() {
   clearTimeout(timerEstado);
-  if (subiendo) { timerEstado = setTimeout(seguir, 3000); return; }
+  if (subiendo || (document.activeElement && document.activeElement.id === 'califTxt')) { timerEstado = setTimeout(seguir, 3000); return; }
   const card = $('#estadoCard');
   if (!actual) { card.classList.add('hide'); $('#form').classList.remove('hide'); return; }
   card.classList.remove('hide'); $('#form').classList.add('hide');
@@ -259,6 +327,7 @@ async function seguir() {
   } else if (r.estado === 'aceptada') {
     card.innerHTML = `<div class="row" style="justify-content:center">${avatar({ nombre: r.choferNombre, foto: r.choferFoto })}</div>
       <h2 style="margin-top:10px">✅ ${esc(r.choferNombre)} aceptó tu ${actual.tipo === 'viaje' ? 'viaje' : 'pedido'}</h2>
+      <div>${estrellas(r.choferCalif, r.choferNCalif)}</div>
       <div class="mute">${esc(r.choferMoto || '')}</div>${ruta}
       ${r.precioUsd ? `<div style="margin-top:10px;font-size:22px;font-weight:800">💵 $${num(r.precioUsd)}</div>
         ${r.precioBs ? `<div class="mute">Bs ${num(r.precioBs)} · tasa BCV ${num(r.tasa)}</div>` : ''}` : ''}
@@ -268,7 +337,9 @@ async function seguir() {
         <a class="btn wa sm" target="_blank" href="${waLink(r.choferTelefono, msgChofer(r.choferNombre))}">WhatsApp</a>
         <a class="btn sm" href="tel:${esc(r.choferTelefono)}">📞 Llamar</a>
         <button class="btn ghost sm" id="cancelar">Cancelar</button>
-      </div>`;
+      </div>
+      <div class="seguro">🛡️ <b>Viaje seguro:</b> manda los datos del chofer y tu ruta a un familiar o amigo.
+        <a class="btn wa block sm" style="margin-top:8px" target="_blank" href="https://wa.me/?text=${encodeURIComponent(msgSeguro(r))}">Compartir mi viaje por WhatsApp</a></div>`;
     timerEstado = setTimeout(seguir, 15000);
   } else {
     const txt = { completada: ['🎉', '¡Servicio completado!', 'Gracias por usar el transporte de la comunidad.'],
@@ -276,6 +347,7 @@ async function seguir() {
                   cancelada: ['✖️', 'Solicitud cancelada', ''] }[r.estado] || ['ℹ️', 'Solicitud cerrada', ''];
     const faltaPago = r.estado === 'completada' && r.metodoPago === 'pagomovil' && r.pagoEstado !== 'confirmado';
     card.innerHTML = `<div class="big">${txt[0]}</div><h2>${txt[1]}</h2><p class="mute">${txt[2]}</p>
+      ${bloqueCalif(r)}
       ${faltaPago ? bloquePago(r) : ''}
       <div class="actions"><button class="btn" id="nueva">Pedir otro servicio</button></div>`;
     if (faltaPago) timerEstado = setTimeout(seguir, 15000);
@@ -295,7 +367,21 @@ $('#estadoCard').addEventListener('change', async e => {
 $('#estadoCard').addEventListener('click', async e => {
   const cp = e.target.closest('[data-copiar]');
   if (cp) { try { await navigator.clipboard.writeText(cp.dataset.copiar); toast('Copiado: ' + cp.dataset.copiar); } catch (err) { prompt('Copia este dato:', cp.dataset.copiar); } return; }
-  if (e.target.id === 'nueva') { actual = null; store.del('mb_solicitud'); seguir(); }
+  const st = e.target.closest('[data-star]');
+  if (st) {
+    califSel = Number(st.dataset.star);
+    document.querySelectorAll('#califBox [data-star]').forEach(b => b.classList.toggle('on', Number(b.dataset.star) <= califSel));
+    $('#califOk').disabled = false; return;
+  }
+  if (e.target.id === 'califOk') {
+    e.target.disabled = true; e.target.textContent = 'Enviando…';
+    try {
+      await call('calificar', { id: actual.id, telefono: actual.telefono, estrellas: califSel, comentario: ($('#califTxt') || {}).value || '' });
+      toast('¡Gracias por calificar! ⭐'); califSel = 0; cargarChoferes();
+    } catch (err) { toast(err.message || err); }
+    seguir(); return;
+  }
+  if (e.target.id === 'nueva') { actual = null; califSel = 0; store.del('mb_solicitud'); seguir(); }
   if (e.target.id === 'cancelar') {
     if (!confirm('¿Cancelar la solicitud?')) return;
     try { await call('cancelarSolicitud', { id: actual.id, telefono: actual.telefono }); } catch (err) { toast(err.message || err); }
